@@ -1,26 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Mr. Khokhar Quest</title>
   <style>
     body {
       margin: 0;
-      background: #2ecc71;
-      font-family: Arial, sans-serif;
       overflow: hidden;
+      background-color: #222;
+      font-family: Arial;
+      color: white;
     }
-    canvas {
+    #gameCanvas {
       display: block;
       margin: 0 auto;
-      border: 4px solid #27ae60;
-      box-shadow: 0 0 20px #2c3e50;
+      background: #66bb66;
+      border: 4px solid #000;
     }
   </style>
 </head>
 <body>
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.js"></script>
+  <canvas id="gameCanvas"></canvas>
   <script src="game.js"></script>
 </body>
 </html>
