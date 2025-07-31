@@ -1,124 +1,106 @@
+let player, cursors, sword, monsters, npcs, healthBar;
+let health = 100;
+let monsterHP = new Map();
+
 const config = {
-  type: Phaser.AUTO, width: 800, height: 600,
-  physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
+  type: Phaser.AUTO,
+  width: 800,
+  height: 600,
+  physics: { default: 'arcade', arcade: { debug: false } },
   scene: { preload, create, update }
 };
 
 const game = new Phaser.Game(config);
 
-let player, cursors, sword, swordKey, swordCooldown = 0;
-let enemies = [], npcs = [], messageText, winTextShown = false;
-let health = 100, healthBar, healthText, gameOver = false;
-let questsCompleted = 0;
-
 function preload() {
-  this.load.image('tiles', 'https://labs.phaser.io/assets/tilemaps/tiles/gridtiles.png');
-  this.load.tilemapTiledJSON('map', 'https://labs.phaser.io/assets/tilemaps/maps/simple-forest.json');
-  this.load.spritesheet('player', 'https://labs.phaser.io/assets/sprites/dude.png', { frameWidth: 32, frameHeight: 48 });
-  this.load.image('enemy', 'https://i.imgur.com/O6aXh0J.png');
-  this.load.image('sword', 'https://i.imgur.com/urD5wT3.png');
+  this.load.image('grass', 'https://labs.phaser.io/assets/tilemaps/tiles/grass.png');
+  this.load.image('tree', 'https://labs.phaser.io/assets/sprites/tree.png');
+  this.load.image('sword', 'https://labs.phaser.io/assets/sprites/sword.png');
+  this.load.image('monster', 'https://labs.phaser.io/assets/sprites/space-baddie.png');
   this.load.image('npc', 'https://labs.phaser.io/assets/sprites/phaser-dude.png');
+  this.load.spritesheet('player', 'https://labs.phaser.io/assets/sprites/dude.png', { frameWidth: 32, frameHeight: 48 });
 }
 
 function create() {
-  const map = this.make.tilemap({ key: 'map' });
-  const tileset = map.addTilesetImage('simple-forest', 'tiles');
-  map.createLayer('Ground', tileset, 0, 0);
+  this.add.tileSprite(400, 300, 800, 600, 'grass');
 
-  player = this.physics.add.sprite(100, 100, 'player').setCollideWorldBounds(true);
+  // Add some trees
+  this.add.image(150, 150, 'tree').setScale(0.5);
+  this.add.image(650, 100, 'tree').setScale(0.5);
+  this.add.image(700, 500, 'tree').setScale(0.5);
 
-  addEnemy(this, 400, 200);
-  addEnemy(this, 600, 300);
-  addEnemy(this, 250, 450);
+  player = this.physics.add.sprite(400, 300, 'player').setScale(1.2);
+  player.setCollideWorldBounds(true);
 
-  npcs.push(this.physics.add.staticSprite(700, 100, 'npc'));
-  npcs.push(this.physics.add.staticSprite(100, 500, 'npc'));
-
-  sword = this.physics.add.sprite(player.x, player.y, 'sword').setScale(1.2).setVisible(false);
-
+  sword = this.physics.add.sprite(player.x + 30, player.y, 'sword').setVisible(false).setScale(0.7);
   cursors = this.input.keyboard.createCursorKeys();
-  swordKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+  this.input.keyboard.on('keydown-SPACE', () => {
+    sword.setVisible(true);
+    setTimeout(() => sword.setVisible(false), 200);
+  });
 
-  this.physics.add.overlap(player, npcs[0], () => showMessage("NPC: Defeat all monsters!"), null, this);
-  this.physics.add.overlap(player, npcs[1], () => {
-    showMessage(questsCompleted >= enemies.length ? "NPC: Thank you, hero!" : "NPC: Monsters still remain!");
-  }, null, this);
+  monsters = this.physics.add.group();
+  spawnMonster(this, 200, 200);
+  spawnMonster(this, 600, 400);
 
-  messageText = this.add.text(10, 10, '', { font: '16px Arial', fill: '#ffffff' });
+  npcs = this.physics.add.staticGroup();
+  npcs.create(100, 500, 'npc').setScale(1.2).refreshBody();
+
+  // Health bar
   healthBar = this.add.graphics();
   updateHealthBar();
-  healthText = this.add.text(10, 30, 'Health: 100', { font: '16px Arial', fill: '#ff0000' });
 
-  this.anims.create({ key: 'left', frames: this.anims.generateFrameNumbers('player', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
-  this.anims.create({ key: 'right', frames: this.anims.generateFrameNumbers('player', { start: 5, end: 8 }), frameRate: 10, repeat: -1 });
-  this.anims.create({ key: 'turn', frames: [{ key: 'player', frame: 4 }], frameRate: 20 });
+  // Collisions
+  this.physics.add.overlap(sword, monsters, hitMonster, null, this);
+  this.physics.add.overlap(player, monsters, monsterHitPlayer, null, this);
+  this.physics.add.overlap(player, npcs, talkToNPC, null, this);
 }
 
 function update() {
-  if (gameOver) return;
   player.setVelocity(0);
-  if (cursors.left.isDown) player.setVelocityX(-160), player.anims.play('left', true);
-  else if (cursors.right.isDown) player.setVelocityX(160), player.anims.play('right', true);
-  else player.anims.play('turn');
-
+  if (cursors.left.isDown) player.setVelocityX(-160);
+  if (cursors.right.isDown) player.setVelocityX(160);
   if (cursors.up.isDown) player.setVelocityY(-160);
-  else if (cursors.down.isDown) player.setVelocityY(160);
+  if (cursors.down.isDown) player.setVelocityY(160);
 
-  if (Phaser.Input.Keyboard.JustDown(swordKey) && swordCooldown <= 0) {
-    sword.setVisible(true);
-    sword.setPosition(player.x + 32, player.y);
-    swordCooldown = 20;
-  }
+  sword.setPosition(player.x + 30, player.y);
+}
 
-  if (swordCooldown-- > 0 && swordCooldown === 0) sword.setVisible(false);
-
-  enemies.forEach(enemy => enemy.active && !gameOver && this.physics.moveToObject(enemy, player, 60));
-
-  if (!winTextShown && questsCompleted === enemies.length) {
-    showMessage("🎉 You Win! All monsters defeated!");
-    winTextShown = true;
+function hitMonster(sword, monster) {
+  let hp = monsterHP.get(monster) || 3;
+  hp -= 1;
+  if (hp <= 0) {
+    monster.destroy();
+    monsterHP.delete(monster);
+  } else {
+    monsterHP.set(monster, hp);
   }
 }
 
-function hitEnemy(sword, enemy) {
-  if (!enemy.active) return;
-  enemy.health -= 1;
-  if (enemy.health <= 0) {
-    enemy.disableBody(true, true);
-    questsCompleted++;
-  }
-}
-
-function enemyHitPlayer(player, enemy) {
-  if (!gameOver && enemy.active) {
-    health -= 5;
+function monsterHitPlayer(player, monster) {
+  health -= 1;
+  updateHealthBar();
+  if (health <= 0) {
+    this.physics.pause();
     player.setTint(0xff0000);
-    player.setVelocity(-100, -100);
-    updateHealthBar();
-    enemy.scene.time.delayedCall(200, () => player.clearTint(), [], this);
-    if (health <= 0) {
-      gameOver = true;
-      showMessage("💀 You Died! Refresh to try again.");
-      enemies.forEach(e => e.setVelocity(0));
-    }
+    this.add.text(300, 250, 'Game Over!', { fontSize: '32px', fill: '#fff' });
   }
 }
 
 function updateHealthBar() {
   healthBar.clear();
-  healthBar.fillStyle(0xff0000);
-  healthBar.fillRect(10, 50, Math.max(0, health * 2), 16);
-  healthText.setText('Health: ' + health);
+  healthBar.fillStyle(0xff0000, 1);
+  healthBar.fillRect(10, 10, health * 2, 20);
 }
 
-function showMessage(txt) {
-  messageText.setText(txt);
+function talkToNPC(player, npc) {
+  this.add.text(npc.x - 40, npc.y - 50, 'Find the monsters!', { fontSize: '12px', fill: '#fff' });
 }
 
-function addEnemy(scene, x, y) {
-  const e = scene.physics.add.sprite(x, y, 'enemy').setCollideWorldBounds(true);
-  e.health = 3;
-  enemies.push(e);
-  scene.physics.add.overlap(sword, e, hitEnemy, null, scene);
-  scene.physics.add.overlap(player, e, enemyHitPlayer, null, scene);
+function spawnMonster(scene, x, y) {
+  let monster = monsters.create(x, y, 'monster');
+  monster.setCollideWorldBounds(true);
+  monster.setVelocity(Phaser.Math.Between(-100, 100), Phaser.Math.Between(-100, 100));
+  monster.setBounce(1);
+  monsterHP.set(monster, 3); // 3 hits to kill
 }
